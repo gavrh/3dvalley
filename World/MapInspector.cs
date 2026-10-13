@@ -7,6 +7,7 @@ namespace ThreeDValley;
 
 internal static class MapInspector {
     private static readonly string[] SampledProperties = { "Water", "Passable", "Diggable", "Type", "Action" };
+    private const int MaxTilesSampled = 4096;
 
     internal static void LogCurrentLocation(string reason) {
         GameLocation? location = Game1.currentLocation;
@@ -38,15 +39,18 @@ internal static class MapInspector {
         foreach (TileSheet tileSheet in map.TileSheets)
             Log.Info($"  tilesheet '{tileSheet.Id}': {tileSheet.SheetWidth}x{tileSheet.SheetHeight} tiles, tile {tileSheet.TileWidth}x{tileSheet.TileHeight} px, image '{tileSheet.ImageSource}'.");
 
-        LogTileProperties(location, map, tilesWide, tilesHigh);
+        LogTileProperties(location, map);
     }
 
-    private static void LogTileProperties(GameLocation location, Map map, int tilesWide, int tilesHigh) {
+    private static void LogTileProperties(GameLocation location, Map map) {
         var found = new Dictionary<string, string>();
+        int budget = MaxTilesSampled;
 
         foreach (Layer layer in map.Layers) {
-            for (int y = 0; y < tilesHigh; y++) {
-                for (int x = 0; x < tilesWide; x++) {
+            for (int y = 0; y < layer.LayerHeight && budget > 0; y++) {
+                for (int x = 0; x < layer.LayerWidth && budget > 0; x++) {
+                    budget--;
+
                     foreach (string property in SampledProperties) {
                         if (found.ContainsKey(property))
                             continue;
