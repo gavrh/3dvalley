@@ -10,6 +10,8 @@ namespace ThreeDValley;
 public sealed class ModEntry : Mod {
     internal static ModConfig Config { get; private set; } = null!;
 
+    private readonly FreeCamera _camera = new();
+
     private Texture2D? _pixel;
     private RenderTarget2D? _sceneTarget;
     private SceneRenderer? _sceneRenderer;
@@ -33,6 +35,7 @@ public sealed class ModEntry : Mod {
 
         helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
+        helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
 
         helper.Events.GameLoop.SaveLoaded += (_, _) => MapInspector.LogCurrentLocation("save loaded");
         helper.Events.Player.Warped += (_, _) => MapInspector.LogCurrentLocation("location changed");
@@ -67,13 +70,36 @@ public sealed class ModEntry : Mod {
         Log.Info($"3D Valley view {(Config.Enabled ? "enabled" : "disabled")}.");
     }
 
+    private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e) {
+        if (this.IsCameraActive())
+            this.UpdateCamera();
+    }
+
+    private bool IsCameraActive() {
+        return Config.Enabled
+            && Context.IsWorldReady
+            && Game1.currentLocation is not null
+            && Game1.activeClickableMenu is null
+            && !Game1.IsChatting;
+    }
+
+    private void UpdateCamera() {
+        float elapsedSeconds = (float)Game1.currentGameTime.ElapsedGameTime.TotalSeconds;
+
+        float forward = (this.Helper.Input.IsDown(SButton.W) ? 1f : 0f) - (this.Helper.Input.IsDown(SButton.S) ? 1f : 0f);
+        float strafe = (this.Helper.Input.IsDown(SButton.D) ? 1f : 0f) - (this.Helper.Input.IsDown(SButton.A) ? 1f : 0f);
+        float vertical = (this.Helper.Input.IsDown(SButton.Space) ? 1f : 0f)
+            - ((this.Helper.Input.IsDown(SButton.LeftControl) || this.Helper.Input.IsDown(SButton.RightControl)) ? 1f : 0f);
+        this._camera.Move(forward, strafe, vertical, elapsedSeconds);
+    }
+
     private void DrawComposite(SpriteBatch batch) {
         GraphicsDevice device = Game1.graphics.GraphicsDevice;
         if (!this.EnsureSceneTarget(device))
             return;
 
         RenderView view = this._renderView!;
-        view.View = Matrix.CreateLookAt(new Vector3(0f, 0f, 3f), Vector3.Zero, Vector3.Up);
+        view.View = this._camera.GetView();
 
         RenderTargetBinding[] previousTargets = device.GetRenderTargets();
         Viewport previousViewport = device.Viewport;
