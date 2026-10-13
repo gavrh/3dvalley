@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -19,6 +20,7 @@ public sealed class ModEntry : Mod {
     private int _sceneWidth;
     private int _sceneHeight;
     private bool _compositeFailed;
+    private bool _skipNextLook;
 
     public override void Entry(IModHelper helper) {
         Log.Init(this.Monitor);
@@ -91,6 +93,21 @@ public sealed class ModEntry : Mod {
         float vertical = (this.Helper.Input.IsDown(SButton.Space) ? 1f : 0f)
             - ((this.Helper.Input.IsDown(SButton.LeftControl) || this.Helper.Input.IsDown(SButton.RightControl)) ? 1f : 0f);
         this._camera.Move(forward, strafe, vertical, elapsedSeconds);
+
+        Point center = GetMouseCenter();
+        if (this._skipNextLook) {
+            this._skipNextLook = false;
+        }
+        else {
+            MouseState current = Mouse.GetState();
+            this._camera.Look(current.X - center.X, current.Y - center.Y);
+        }
+        Game1.setMousePositionRaw(center.X, center.Y);
+    }
+
+    private static Point GetMouseCenter() {
+        Rectangle bounds = Game1.game1.Window.ClientBounds;
+        return new Point(bounds.Width / 2, bounds.Height / 2);
     }
 
     private void DrawComposite(SpriteBatch batch) {
