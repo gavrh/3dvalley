@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -10,12 +11,20 @@ namespace ThreeDValley;
 public sealed class ModEntry : Mod {
     internal static ModConfig Config { get; private set; } = null!;
 
+    private readonly FreeCamera _camera = new();
+
     private Texture2D? _pixel;
     private RenderTarget2D? _sceneTarget;
     private SceneRenderer? _sceneRenderer;
+    private RenderView? _renderView;
     private int _sceneWidth;
     private int _sceneHeight;
     private bool _compositeFailed;
+    private bool _cameraFailed;
+    private bool _mouseCaptured;
+    private bool _skipNextLook;
+    private float _savedMouseCursorTransparency = 1f;
+    private bool _savedMouseVisible;
 
     public override void Entry(IModHelper helper) {
         Log.Init(this.Monitor);
@@ -32,6 +41,7 @@ public sealed class ModEntry : Mod {
 
         helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
+        helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
 
         helper.Events.GameLoop.SaveLoaded += (_, _) => MapInspector.LogCurrentLocation("save loaded");
         helper.Events.Player.Warped += (_, _) => MapInspector.LogCurrentLocation("location changed");
@@ -66,21 +76,102 @@ public sealed class ModEntry : Mod {
         Log.Info($"3D Valley view {(Config.Enabled ? "enabled" : "disabled")}.");
     }
 
+    private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e) {
+        bool active = this.IsCameraActive();
+
+        try {
+            this.SetMouseCaptured(active);
+            if (active)
+                this.UpdateCamera();
+        }
+        catch (Exception ex) {
+            this._cameraFailed = true;
+            Log.Error($"Disabling the free camera after an update error: {ex}");
+            this.SetMouseCaptured(false);
+        }
+    }
+
+    private bool IsCameraActive() {
+        return !this._cameraFailed
+            && Config.Enabled
+            && Context.IsWorldReady
+            && Game1.currentLocation is not null
+            && Game1.activeClickableMenu is null
+            && !Game1.dialogueUp
+            && !Game1.eventUp
+            && !Game1.paused
+            && !Game1.IsChatting
+            && Game1.game1.IsActive;
+    }
+
+    private void UpdateCamera() {
+        float elapsedSeconds = (float)Game1.currentGameTime.ElapsedGameTime.TotalSeconds;
+
+        float forward = (this.Helper.Input.IsDown(SButton.W) ? 1f : 0f) - (this.Helper.Input.IsDown(SButton.S) ? 1f : 0f);
+        float strafe = (this.Helper.Input.IsDown(SButton.D) ? 1f : 0f) - (this.Helper.Input.IsDown(SButton.A) ? 1f : 0f);
+        float vertical = (this.Helper.Input.IsDown(SButton.Space) ? 1f : 0f)
+            - ((this.Helper.Input.IsDown(SButton.LeftControl) || this.Helper.Input.IsDown(SButton.RightControl)) ? 1f : 0f);
+        this._camera.Move(forward, strafe, vertical, elapsedSeconds);
+
+        Point center = GetMouseCenter();
+        if (this._skipNextLook) {
+            this._skipNextLook = false;
+        }
+        else {
+            MouseState current = Mouse.GetState();
+            this._camera.Look(current.X - center.X, current.Y - center.Y);
+        }
+        Game1.setMousePositionRaw(center.X, center.Y);
+        Game1.mouseCursorTransparency = 0f;
+    }
+
+    private void SetMouseCaptured(bool capture) {
+        if (capture == this._mouseCaptured)
+            return;
+
+        this._mouseCaptured = capture;
+
+        if (capture) {
+            this._savedMouseCursorTransparency = Game1.mouseCursorTransparency;
+            this._savedMouseVisible = Game1.game1.IsMouseVisible;
+            Game1.mouseCursorTransparency = 0f;
+            Game1.game1.IsMouseVisible = false;
+            this._skipNextLook = true;
+
+            Point center = GetMouseCenter();
+            Game1.setMousePositionRaw(center.X, center.Y);
+            Log.Debug("Free camera active; mouse captured.");
+        }
+        else {
+            Game1.mouseCursorTransparency = this._savedMouseCursorTransparency;
+            Game1.game1.IsMouseVisible = this._savedMouseVisible;
+            Log.Debug("Free camera inactive; mouse released.");
+        }
+    }
+
+    private static Point GetMouseCenter() {
+        Rectangle bounds = Game1.game1.Window.ClientBounds;
+        return new Point(bounds.Width / 2, bounds.Height / 2);
+    }
+
     private void DrawComposite(SpriteBatch batch) {
         GraphicsDevice device = Game1.graphics.GraphicsDevice;
         if (!this.EnsureSceneTarget(device))
             return;
+
+        RenderView view = this._renderView!;
+        view.View = this._camera.GetView();
 
         RenderTargetBinding[] previousTargets = device.GetRenderTargets();
         Viewport previousViewport = device.Viewport;
 
         try {
             batch.End();
-            device.SetRenderTarget(this._sceneTarget);
+            device.SetRenderTarget(view.RenderTarget);
             device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer | ClearOptions.Stencil, Color.CornflowerBlue, 1f, 0);
 
             this._sceneRenderer ??= new SceneRenderer(device);
-            this._sceneRenderer.Draw(this._sceneWidth, this._sceneHeight);
+            this._sceneRenderer.Draw(view);
         }
         finally {
             this.RestoreRenderTarget(device, previousTargets);
@@ -106,8 +197,10 @@ public sealed class ModEntry : Mod {
         try {
             this._sceneRenderer?.Dispose();
             this._sceneRenderer = null;
+            this._renderView = null;
             this._sceneTarget?.Dispose();
             this._sceneTarget = new RenderTarget2D(device, width, height, false, SurfaceFormat.Color, DepthFormat.Depth24Stencil8, 0, RenderTargetUsage.DiscardContents);
+            this._renderView = new RenderView(this._sceneTarget, new Viewport(this._sceneTarget.Bounds));
             this._sceneWidth = width;
             this._sceneHeight = height;
             Log.Debug($"Created composite render target {width}x{height}.");
@@ -115,6 +208,7 @@ public sealed class ModEntry : Mod {
         }
         catch (Exception ex) {
             this._sceneTarget = null;
+            this._renderView = null;
             this._sceneWidth = 0;
             this._sceneHeight = 0;
             Log.Error($"Failed to create the composite render target: {ex}");
