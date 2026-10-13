@@ -13,6 +13,7 @@ public sealed class ModEntry : Mod {
     private Texture2D? _pixel;
     private RenderTarget2D? _sceneTarget;
     private SceneRenderer? _sceneRenderer;
+    private RenderView? _renderView;
     private int _sceneWidth;
     private int _sceneHeight;
     private bool _compositeFailed;
@@ -71,16 +72,19 @@ public sealed class ModEntry : Mod {
         if (!this.EnsureSceneTarget(device))
             return;
 
+        RenderView view = this._renderView!;
+        view.View = Matrix.CreateLookAt(new Vector3(0f, 0f, 3f), Vector3.Zero, Vector3.Up);
+
         RenderTargetBinding[] previousTargets = device.GetRenderTargets();
         Viewport previousViewport = device.Viewport;
 
         try {
             batch.End();
-            device.SetRenderTarget(this._sceneTarget);
+            device.SetRenderTarget(view.RenderTarget);
             device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer | ClearOptions.Stencil, Color.CornflowerBlue, 1f, 0);
 
             this._sceneRenderer ??= new SceneRenderer(device);
-            this._sceneRenderer.Draw(this._sceneWidth, this._sceneHeight);
+            this._sceneRenderer.Draw(view);
         }
         finally {
             this.RestoreRenderTarget(device, previousTargets);
@@ -106,8 +110,10 @@ public sealed class ModEntry : Mod {
         try {
             this._sceneRenderer?.Dispose();
             this._sceneRenderer = null;
+            this._renderView = null;
             this._sceneTarget?.Dispose();
             this._sceneTarget = new RenderTarget2D(device, width, height, false, SurfaceFormat.Color, DepthFormat.Depth24Stencil8, 0, RenderTargetUsage.DiscardContents);
+            this._renderView = new RenderView(this._sceneTarget, new Viewport(this._sceneTarget.Bounds));
             this._sceneWidth = width;
             this._sceneHeight = height;
             Log.Debug($"Created composite render target {width}x{height}.");
@@ -115,6 +121,7 @@ public sealed class ModEntry : Mod {
         }
         catch (Exception ex) {
             this._sceneTarget = null;
+            this._renderView = null;
             this._sceneWidth = 0;
             this._sceneHeight = 0;
             Log.Error($"Failed to create the composite render target: {ex}");

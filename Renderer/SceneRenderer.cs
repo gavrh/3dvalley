@@ -14,39 +14,30 @@ internal sealed class SceneRenderer : IDisposable {
     };
 
     private readonly GraphicsDevice device;
-    private readonly Matrix view;
 
     private VertexBuffer? vertexBuffer;
     private BasicEffect? effect;
-    private Matrix projection;
-    private int projectionWidth;
-    private int projectionHeight;
 
     internal SceneRenderer(GraphicsDevice device) {
         this.device = device;
-        this.view = Matrix.CreateLookAt(new Vector3(0f, 0f, 3f), Vector3.Zero, Vector3.Up);
     }
 
-    internal void Draw(int width, int height) {
-        if (width <= 0 || height <= 0)
+    internal void Draw(RenderView view) {
+        if (view.Viewport.Width <= 0 || view.Viewport.Height <= 0)
             return;
 
         this.EnsureResources();
 
-        if (this.projectionWidth != width || this.projectionHeight != height) {
-            this.projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.PiOver4, (float)width / height, 0.1f, 100f);
-            this.projectionWidth = width;
-            this.projectionHeight = height;
-        }
-
+        Viewport previousViewport = this.device.Viewport;
         DepthStencilState previousDepth = this.device.DepthStencilState;
         RasterizerState previousRasterizer = this.device.RasterizerState;
         BlendState previousBlend = this.device.BlendState;
 
         try {
+            this.device.Viewport = view.Viewport;
             this.effect!.World = Matrix.Identity;
-            this.effect.View = this.view;
-            this.effect.Projection = this.projection;
+            this.effect.View = view.View;
+            this.effect.Projection = view.Projection;
 
             this.device.SetVertexBuffer(this.vertexBuffer);
             foreach (EffectPass pass in this.effect.CurrentTechnique.Passes) {
@@ -59,6 +50,7 @@ internal sealed class SceneRenderer : IDisposable {
         }
         finally {
             this.device.SetVertexBuffer(null);
+            this.device.Viewport = previousViewport;
             this.device.DepthStencilState = previousDepth;
             this.device.RasterizerState = previousRasterizer;
             this.device.BlendState = previousBlend;
