@@ -3,9 +3,19 @@ using StardewModdingAPI;
 namespace ThreeDValley;
 
 public sealed class ModEntry : Mod {
+    internal static ModConfig Config { get; private set; } = null!;
+
     public override void Entry(IModHelper helper) {
-        helper.Events.GameLoop.GameLaunched += (_, _) => {
-            Monitor.Log("3D Valley loaded.", LogLevel.Info);
-        };
+        Log.Init(this.Monitor);
+
+        Config = helper.ReadConfig<ModConfig>();
+
+        var configPath = Path.Combine(helper.DirectoryPath, "config.json");
+        if (!File.Exists(configPath)) {
+            helper.WriteConfig(Config);
+            Log.Info($"Created default config at {configPath}.");
+        }
+
+        Log.Info($"3D Valley {this.ModManifest.Version} loaded.");
     }
 }
