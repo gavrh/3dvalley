@@ -30,6 +30,10 @@ public sealed class ModEntry : Mod {
 
         helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
+
+        helper.Events.GameLoop.SaveLoaded += (_, _) => MapInspector.LogCurrentLocation("save loaded");
+        helper.Events.Player.Warped += (_, _) => MapInspector.LogCurrentLocation("location changed");
+        helper.ConsoleCommands.Add("3dvalley_map", "Log the current location's map, layers, tilesheets, and a tile-property sample.", (_, _) => MapInspector.LogCurrentLocation("command"));
     }
 
     private void OnRenderedWorld(object? sender, RenderedWorldEventArgs e) {
