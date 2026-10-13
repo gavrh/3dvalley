@@ -71,7 +71,7 @@ public sealed class ModEntry : Mod {
         try {
             batch.End();
             device.SetRenderTarget(this._sceneTarget);
-            device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer | ClearOptions.Stencil, Color.CornflowerBlue, 0f, 0);
+            device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer | ClearOptions.Stencil, Color.CornflowerBlue, 1f, 0);
         }
         finally {
             this.RestoreRenderTarget(device, previousTargets);
