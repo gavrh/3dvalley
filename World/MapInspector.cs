@@ -7,7 +7,7 @@ namespace ThreeDValley;
 
 internal static class MapInspector {
     private static readonly string[] SampledProperties = { "Water", "Passable", "Diggable", "Type", "Action" };
-    private const int MaxTilesSampled = 4096;
+    private const int MaxTilesPerLayer = 4096;
 
     internal static void LogCurrentLocation(string reason) {
         GameLocation? location = Game1.currentLocation;
@@ -44,12 +44,18 @@ internal static class MapInspector {
 
     private static void LogTileProperties(GameLocation location, Map map) {
         var found = new Dictionary<string, string>();
-        int budget = MaxTilesSampled;
+        bool truncated = false;
 
         foreach (Layer layer in map.Layers) {
-            for (int y = 0; y < layer.LayerHeight && budget > 0; y++) {
-                for (int x = 0; x < layer.LayerWidth && budget > 0; x++) {
-                    budget--;
+            if (found.Count == SampledProperties.Length)
+                break;
+
+            int tileCount = layer.LayerWidth * layer.LayerHeight;
+            int scanned = 0;
+
+            for (int y = 0; y < layer.LayerHeight && scanned < MaxTilesPerLayer; y++) {
+                for (int x = 0; x < layer.LayerWidth && scanned < MaxTilesPerLayer; x++) {
+                    scanned++;
 
                     foreach (string property in SampledProperties) {
                         if (found.ContainsKey(property))
@@ -60,15 +66,16 @@ internal static class MapInspector {
                             found[property] = $"{value} at ({x},{y}) {layer.Id}";
                     }
                 }
-                if (found.Count == SampledProperties.Length)
-                    break;
             }
-            if (found.Count == SampledProperties.Length)
-                break;
+
+            if (scanned == MaxTilesPerLayer && tileCount > MaxTilesPerLayer)
+                truncated = true;
         }
 
         Log.Info("  tile properties (first sample per property):");
         foreach (string property in SampledProperties)
             Log.Info(found.TryGetValue(property, out string? sample) ? $"    {property}={sample}" : $"    {property}=<none>");
+        if (truncated)
+            Log.Info($"    (sampled at most {MaxTilesPerLayer} tiles per layer)");
     }
 }
