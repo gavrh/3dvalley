@@ -1,0 +1,10 @@
+{
+    "Name": "3D Valley",
+    "Author": "https://github.com/gavrh",
+    "Version": "0.1.0",
+    "Description": "3D mod for Stardew Valley",
+    "UniqueID": "gavrh.3dvalley",
+    "EntryDll": "ThreeDValley.dll",
+    "MinimumApiVersion": "4.1.0",
+    "UpdateKeys": []
+}

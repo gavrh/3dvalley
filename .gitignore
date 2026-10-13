@@ -1,0 +1,11 @@
+# Build output
+bin/
+obj/
+
+# IDE / tooling
+.vs/
+.idea/
+*.user
+
+# Release artifacts
+*.zip
