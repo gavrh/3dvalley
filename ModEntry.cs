@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using ThreeDValley.Renderer;
 
 namespace ThreeDValley;
 
@@ -11,6 +12,7 @@ public sealed class ModEntry : Mod {
 
     private Texture2D? _pixel;
     private RenderTarget2D? _sceneTarget;
+    private SceneRenderer? _sceneRenderer;
     private int _sceneWidth;
     private int _sceneHeight;
     private bool _compositeFailed;
@@ -72,6 +74,9 @@ public sealed class ModEntry : Mod {
             batch.End();
             device.SetRenderTarget(this._sceneTarget);
             device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer | ClearOptions.Stencil, Color.CornflowerBlue, 1f, 0);
+
+            this._sceneRenderer ??= new SceneRenderer(device);
+            this._sceneRenderer.Draw(this._sceneWidth, this._sceneHeight);
         }
         finally {
             this.RestoreRenderTarget(device, previousTargets);
@@ -95,6 +100,8 @@ public sealed class ModEntry : Mod {
             return true;
 
         try {
+            this._sceneRenderer?.Dispose();
+            this._sceneRenderer = null;
             this._sceneTarget?.Dispose();
             this._sceneTarget = new RenderTarget2D(device, width, height, false, SurfaceFormat.Color, DepthFormat.Depth24Stencil8, 0, RenderTargetUsage.DiscardContents);
             this._sceneWidth = width;
