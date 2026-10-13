@@ -97,7 +97,11 @@ public sealed class ModEntry : Mod {
             && Context.IsWorldReady
             && Game1.currentLocation is not null
             && Game1.activeClickableMenu is null
-            && !Game1.IsChatting;
+            && !Game1.dialogueUp
+            && !Game1.eventUp
+            && !Game1.paused
+            && !Game1.IsChatting
+            && Game1.game1.IsActive;
     }
 
     private void UpdateCamera() {
