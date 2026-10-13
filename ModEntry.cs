@@ -20,7 +20,11 @@ public sealed class ModEntry : Mod {
     private int _sceneWidth;
     private int _sceneHeight;
     private bool _compositeFailed;
+    private bool _cameraFailed;
+    private bool _mouseCaptured;
     private bool _skipNextLook;
+    private float _savedMouseCursorTransparency = 1f;
+    private bool _savedMouseVisible;
 
     public override void Entry(IModHelper helper) {
         Log.Init(this.Monitor);
@@ -73,12 +77,23 @@ public sealed class ModEntry : Mod {
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e) {
-        if (this.IsCameraActive())
-            this.UpdateCamera();
+        bool active = this.IsCameraActive();
+
+        try {
+            this.SetMouseCaptured(active);
+            if (active)
+                this.UpdateCamera();
+        }
+        catch (Exception ex) {
+            this._cameraFailed = true;
+            Log.Error($"Disabling the free camera after an update error: {ex}");
+            this.SetMouseCaptured(false);
+        }
     }
 
     private bool IsCameraActive() {
-        return Config.Enabled
+        return !this._cameraFailed
+            && Config.Enabled
             && Context.IsWorldReady
             && Game1.currentLocation is not null
             && Game1.activeClickableMenu is null
@@ -103,6 +118,31 @@ public sealed class ModEntry : Mod {
             this._camera.Look(current.X - center.X, current.Y - center.Y);
         }
         Game1.setMousePositionRaw(center.X, center.Y);
+        Game1.mouseCursorTransparency = 0f;
+    }
+
+    private void SetMouseCaptured(bool capture) {
+        if (capture == this._mouseCaptured)
+            return;
+
+        this._mouseCaptured = capture;
+
+        if (capture) {
+            this._savedMouseCursorTransparency = Game1.mouseCursorTransparency;
+            this._savedMouseVisible = Game1.game1.IsMouseVisible;
+            Game1.mouseCursorTransparency = 0f;
+            Game1.game1.IsMouseVisible = false;
+            this._skipNextLook = true;
+
+            Point center = GetMouseCenter();
+            Game1.setMousePositionRaw(center.X, center.Y);
+            Log.Debug("Free camera active; mouse captured.");
+        }
+        else {
+            Game1.mouseCursorTransparency = this._savedMouseCursorTransparency;
+            Game1.game1.IsMouseVisible = this._savedMouseVisible;
+            Log.Debug("Free camera inactive; mouse released.");
+        }
     }
 
     private static Point GetMouseCenter() {
