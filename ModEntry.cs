@@ -29,6 +29,7 @@ public sealed class ModEntry : Mod {
         Log.Info($"3D Valley {this.ModManifest.Version} loaded.");
 
         helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
+        helper.Events.Input.ButtonPressed += this.OnButtonPressed;
     }
 
     private void OnRenderedWorld(object? sender, RenderedWorldEventArgs e) {
@@ -46,6 +47,17 @@ public sealed class ModEntry : Mod {
         }
 
         this.DrawMarker(e.SpriteBatch);
+    }
+
+    private void OnButtonPressed(object? sender, ButtonPressedEventArgs e) {
+        if (e.Button != Config.ViewToggleKey)
+            return;
+        if (!Context.IsWorldReady || Game1.activeClickableMenu is not null || Game1.IsChatting)
+            return;
+
+        Config.Enabled = !Config.Enabled;
+        this.Helper.WriteConfig(Config);
+        Log.Info($"3D Valley view {(Config.Enabled ? "enabled" : "disabled")}.");
     }
 
     private void DrawComposite(SpriteBatch batch) {
