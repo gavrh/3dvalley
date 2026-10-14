@@ -93,6 +93,15 @@ public sealed class ModEntry : Mod {
         Log.Info($"Terrain mesh for {location.NameOrUniqueName}: {terrain.TileCount} tiles, "
             + $"{terrain.Vertices.Length} vertices, {terrain.TriangleCount} triangles, "
             + $"built in {stopwatch.Elapsed.TotalMilliseconds:F1} ms.");
+
+        this.PlaceCamera(terrain);
+    }
+
+    private void PlaceCamera(TerrainMesh terrain) {
+        float span = MathF.Max(terrain.TilesWide, terrain.TilesHigh);
+        var target = new Vector3(terrain.TilesWide * 0.5f, 0f, terrain.TilesHigh * 0.5f);
+        var position = new Vector3(terrain.TilesWide * 0.5f, span * 0.45f, terrain.TilesHigh * 0.5f + span * 1.1f);
+        this._camera.LookAt(position, target);
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e) {
