@@ -80,21 +80,36 @@ public sealed class ModEntry : Mod {
         MapInspector.LogCurrentLocation(reason);
 
         GameLocation? location = Game1.currentLocation;
+        TerrainMesh? previous = this._terrain;
+
         if (location is null) {
             this._terrain = null;
+            previous?.Dispose();
             return;
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        TerrainMesh terrain = TerrainMesh.Build(location);
+        TerrainMesh terrain = TerrainMesh.Build(location, this.LoadTilesheetTexture);
         stopwatch.Stop();
 
         this._terrain = terrain;
+        previous?.Dispose();
+
         Log.Info($"Terrain mesh for {location.NameOrUniqueName}: {terrain.TileCount} tiles, "
-            + $"{terrain.Vertices.Length} vertices, {terrain.TriangleCount} triangles, "
+            + $"{terrain.VertexCount} vertices, {terrain.TriangleCount} triangles, "
             + $"built in {stopwatch.Elapsed.TotalMilliseconds:F1} ms.");
 
         this.PlaceCamera(terrain);
+    }
+
+    private Texture2D LoadTilesheetTexture(string imageSource) {
+        Texture2D source = this.Helper.GameContent.Load<Texture2D>(imageSource);
+
+        var copy = new Texture2D(Game1.graphics.GraphicsDevice, source.Width, source.Height, false, source.Format);
+        var pixels = new Color[source.Width * source.Height];
+        source.GetData(pixels);
+        copy.SetData(pixels);
+        return copy;
     }
 
     private void PlaceCamera(TerrainMesh terrain) {
