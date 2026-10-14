@@ -96,8 +96,10 @@ public sealed class ModEntry : Mod {
         previous?.Dispose();
 
         Log.Info($"Terrain mesh for {location.NameOrUniqueName}: {terrain.TileCount} tiles, "
-            + $"{terrain.VertexCount} vertices, {terrain.TriangleCount} triangles, "
-            + $"built in {stopwatch.Elapsed.TotalMilliseconds:F1} ms.");
+            + $"{terrain.TilesheetCount} tilesheets, {terrain.VertexCount} vertices, "
+            + $"{terrain.TriangleCount} triangles, built in {stopwatch.Elapsed.TotalMilliseconds:F1} ms.");
+        foreach (TerrainMesh.TilesheetGeometry tilesheet in terrain.Tilesheets)
+            Log.Info($"  textured tilesheet '{tilesheet.ImageSource}': {tilesheet.TileCount} tiles.");
 
         this.PlaceCamera(terrain);
     }
