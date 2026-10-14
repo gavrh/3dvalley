@@ -12,6 +12,7 @@ public sealed class ModEntry : Mod {
     internal static ModConfig Config { get; private set; } = null!;
 
     private readonly FreeCamera _camera = new();
+    private readonly DebugOverlay _overlay = new();
 
     private Texture2D? _pixel;
     private RenderTarget2D? _sceneTarget;
@@ -20,6 +21,7 @@ public sealed class ModEntry : Mod {
     private TerrainMesh? _terrain;
     private int _sceneWidth;
     private int _sceneHeight;
+    private double _lastTerrainBuildMs;
     private bool _compositeFailed;
     private bool _cameraFailed;
     private bool _mouseCaptured;
@@ -41,11 +43,14 @@ public sealed class ModEntry : Mod {
         Log.Info($"3D Valley {this.ModManifest.Version} loaded.");
 
         helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
+        helper.Events.Display.RenderedHud += this.OnRenderedHud;
+        helper.Events.Display.Rendered += this.OnRendered;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
         helper.Events.GameLoop.SaveLoaded += (_, _) => this.OnLocationChanged("save loaded");
         helper.Events.Player.Warped += (_, _) => this.OnLocationChanged("location changed");
         helper.ConsoleCommands.Add("3dvalley_map", "Log the current location's map, layers, tilesheets, and a tile-property sample.", (_, _) => MapInspector.LogCurrentLocation("command"));
+        helper.ConsoleCommands.Add("3dvalley_perf", "Log the 3D Valley performance summary (FPS, frame time, camera, terrain counts, build time, draw calls).", (_, _) => this.LogPerfSummary());
     }
 
     private void OnRenderedWorld(object? sender, RenderedWorldEventArgs e) {
@@ -65,15 +70,32 @@ public sealed class ModEntry : Mod {
         this.DrawMarker(e.SpriteBatch);
     }
 
-    private void OnButtonPressed(object? sender, ButtonPressedEventArgs e) {
-        if (e.Button != Config.ViewToggleKey)
+    private void OnRenderedHud(object? sender, RenderedHudEventArgs e) {
+        if (!Config.ShowDebugOverlay || Game1.currentLocation is null || Game1.activeClickableMenu is not null)
             return;
+
+        this._pixel ??= CreatePixel();
+        this._overlay.Draw(e.SpriteBatch, this._pixel);
+    }
+
+    private void OnRendered(object? sender, RenderedEventArgs e) {
+        this._overlay.SampleFrame();
+    }
+
+    private void OnButtonPressed(object? sender, ButtonPressedEventArgs e) {
         if (!Context.IsWorldReady || Game1.activeClickableMenu is not null || Game1.IsChatting)
             return;
 
-        Config.Enabled = !Config.Enabled;
-        this.Helper.WriteConfig(Config);
-        Log.Info($"3D Valley view {(Config.Enabled ? "enabled" : "disabled")}.");
+        if (e.Button == Config.ViewToggleKey) {
+            Config.Enabled = !Config.Enabled;
+            this.Helper.WriteConfig(Config);
+            Log.Info($"3D Valley view {(Config.Enabled ? "enabled" : "disabled")}.");
+        }
+        else if (e.Button == Config.DebugOverlayKey) {
+            Config.ShowDebugOverlay = !Config.ShowDebugOverlay;
+            this.Helper.WriteConfig(Config);
+            Log.Info($"3D Valley debug overlay {(Config.ShowDebugOverlay ? "enabled" : "disabled")}.");
+        }
     }
 
     private void OnLocationChanged(string reason) {
@@ -91,6 +113,7 @@ public sealed class ModEntry : Mod {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         TerrainMesh terrain = TerrainMesh.Build(location, this.LoadTilesheetTexture);
         stopwatch.Stop();
+        this._lastTerrainBuildMs = stopwatch.Elapsed.TotalMilliseconds;
 
         this._terrain = terrain;
         previous?.Dispose();
@@ -102,6 +125,11 @@ public sealed class ModEntry : Mod {
             Log.Info($"  textured tilesheet '{tilesheet.ImageSource}': {tilesheet.TileCount} tiles.");
 
         this.PlaceCamera(terrain);
+    }
+
+    private void LogPerfSummary() {
+        foreach (string line in this._overlay.Build(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs))
+            Log.Info(line);
     }
 
     private Texture2D LoadTilesheetTexture(string imageSource) {
@@ -122,6 +150,8 @@ public sealed class ModEntry : Mod {
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e) {
+        this._overlay.Tick(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs);
+
         bool active = this.IsCameraActive();
 
         try {
@@ -271,7 +301,7 @@ public sealed class ModEntry : Mod {
     }
 
     private void DrawMarker(SpriteBatch batch) {
-        if (Game1.currentLocation is null)
+        if (!Config.ShowDebugOverlay || Game1.currentLocation is null)
             return;
 
         this._pixel ??= CreatePixel();

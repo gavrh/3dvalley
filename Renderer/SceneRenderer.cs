@@ -18,6 +18,8 @@ internal sealed class SceneRenderer : IDisposable {
 
     internal TerrainMesh? Terrain { get; private set; }
 
+    internal int DrawCallCount => this.tilesheets.Count + (this.coloredVertexBuffer is not null ? 1 : 0);
+
     internal void SetTerrain(TerrainMesh? terrain) {
         this.Terrain = terrain;
 

@@ -12,6 +12,12 @@ internal sealed class FreeCamera {
     private float yaw;
     private float pitch;
 
+    internal Vector3 Position => this.position;
+
+    internal float Yaw => this.yaw;
+
+    internal float Pitch => this.pitch;
+
     internal void Move(float forward, float strafe, float vertical, float elapsedSeconds) {
         Vector3 forwardDirection = new(MathF.Sin(this.yaw), 0f, -MathF.Cos(this.yaw));
         Vector3 rightDirection = new(MathF.Cos(this.yaw), 0f, MathF.Sin(this.yaw));
