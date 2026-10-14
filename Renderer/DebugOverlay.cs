@@ -1,0 +1,102 @@
+using System.Diagnostics;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using StardewValley;
+
+namespace ThreeDValley.Renderer;
+
+internal sealed class DebugOverlay {
+    private const int FrameSampleCount = 60;
+    private const double RefreshSeconds = 0.25;
+
+    private readonly Stopwatch clock = Stopwatch.StartNew();
+    private readonly float[] frameSeconds = new float[FrameSampleCount];
+    private readonly List<string> lines = new();
+    private int frameIndex;
+    private int frameCount;
+    private long lastTicks;
+    private bool hasLastTick;
+    private double sinceRefresh = RefreshSeconds;
+
+    internal void Tick(FreeCamera camera, TerrainMesh? terrain, SceneRenderer? renderer, double buildMs) {
+        this.sinceRefresh += this.MeasureFrame();
+        if (this.sinceRefresh < RefreshSeconds && this.lines.Count > 0)
+            return;
+
+        this.sinceRefresh = 0;
+        this.Build(camera, terrain, renderer, buildMs);
+    }
+
+    internal IReadOnlyList<string> Build(FreeCamera camera, TerrainMesh? terrain, SceneRenderer? renderer, double buildMs) {
+        float average = this.AverageFrameSeconds();
+        float fps = average > 0f ? 1f / average : 0f;
+        Vector3 position = camera.Position;
+
+        this.lines.Clear();
+        this.lines.Add($"FPS {fps:F1} ({average * 1000f:F2} ms)");
+        this.lines.Add($"camera ({position.X:F1}, {position.Y:F1}, {position.Z:F1}) yaw {MathHelper.ToDegrees(camera.Yaw):F1} pitch {MathHelper.ToDegrees(camera.Pitch):F1}");
+        if (terrain is null) {
+            this.lines.Add("terrain none");
+        }
+        else {
+            this.lines.Add($"terrain {terrain.TileCount} tiles, {terrain.VertexCount} verts, {terrain.TriangleCount} tris");
+            this.lines.Add($"tilesheets {terrain.TilesheetCount}, draw calls {(renderer is null ? "-" : renderer.DrawCallCount.ToString())}, build {buildMs:F1} ms");
+        }
+
+        return this.lines;
+    }
+
+    internal void Draw(SpriteBatch batch, Texture2D pixel) {
+        if (this.lines.Count == 0)
+            return;
+
+        const int padding = 4;
+        var position = new Vector2(8f, 8f);
+
+        float width = 0f;
+        foreach (string line in this.lines) {
+            float lineWidth = Game1.smallFont.MeasureString(line).X;
+            if (lineWidth > width)
+                width = lineWidth;
+        }
+
+        float lineHeight = Game1.smallFont.LineSpacing;
+        batch.Draw(pixel, new Rectangle((int)position.X - padding, (int)position.Y - padding, (int)width + padding * 2, (int)(lineHeight * this.lines.Count) + padding * 2), Color.Black * 0.6f);
+        foreach (string line in this.lines) {
+            batch.DrawString(Game1.smallFont, line, position, Color.White);
+            position.Y += lineHeight;
+        }
+    }
+
+    private float MeasureFrame() {
+        long now = this.clock.ElapsedTicks;
+        if (!this.hasLastTick) {
+            this.hasLastTick = true;
+            this.lastTicks = now;
+            return 0f;
+        }
+
+        float seconds = (now - this.lastTicks) / (float)Stopwatch.Frequency;
+        this.lastTicks = now;
+        if (seconds <= 0f)
+            return 0f;
+
+        this.frameSeconds[this.frameIndex] = seconds;
+        this.frameIndex = (this.frameIndex + 1) % FrameSampleCount;
+        if (this.frameCount < FrameSampleCount)
+            this.frameCount++;
+
+        return seconds;
+    }
+
+    private float AverageFrameSeconds() {
+        if (this.frameCount == 0)
+            return 0f;
+
+        float sum = 0f;
+        for (int i = 0; i < this.frameCount; i++)
+            sum += this.frameSeconds[i];
+
+        return sum / this.frameCount;
+    }
+}
