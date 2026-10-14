@@ -17,6 +17,7 @@ public sealed class ModEntry : Mod {
     private RenderTarget2D? _sceneTarget;
     private SceneRenderer? _sceneRenderer;
     private RenderView? _renderView;
+    private TerrainMesh? _terrain;
     private int _sceneWidth;
     private int _sceneHeight;
     private bool _compositeFailed;
@@ -42,9 +43,8 @@ public sealed class ModEntry : Mod {
         helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
-
-        helper.Events.GameLoop.SaveLoaded += (_, _) => MapInspector.LogCurrentLocation("save loaded");
-        helper.Events.Player.Warped += (_, _) => MapInspector.LogCurrentLocation("location changed");
+        helper.Events.GameLoop.SaveLoaded += (_, _) => this.OnLocationChanged("save loaded");
+        helper.Events.Player.Warped += (_, _) => this.OnLocationChanged("location changed");
         helper.ConsoleCommands.Add("3dvalley_map", "Log the current location's map, layers, tilesheets, and a tile-property sample.", (_, _) => MapInspector.LogCurrentLocation("command"));
     }
 
@@ -74,6 +74,25 @@ public sealed class ModEntry : Mod {
         Config.Enabled = !Config.Enabled;
         this.Helper.WriteConfig(Config);
         Log.Info($"3D Valley view {(Config.Enabled ? "enabled" : "disabled")}.");
+    }
+
+    private void OnLocationChanged(string reason) {
+        MapInspector.LogCurrentLocation(reason);
+
+        GameLocation? location = Game1.currentLocation;
+        if (location is null) {
+            this._terrain = null;
+            return;
+        }
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        TerrainMesh terrain = TerrainMesh.Build(location);
+        stopwatch.Stop();
+
+        this._terrain = terrain;
+        Log.Info($"Terrain mesh for {location.NameOrUniqueName}: {terrain.TileCount} tiles, "
+            + $"{terrain.Vertices.Length} vertices, {terrain.TriangleCount} triangles, "
+            + $"built in {stopwatch.Elapsed.TotalMilliseconds:F1} ms.");
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e) {
@@ -171,6 +190,8 @@ public sealed class ModEntry : Mod {
             device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer | ClearOptions.Stencil, Color.CornflowerBlue, 1f, 0);
 
             this._sceneRenderer ??= new SceneRenderer(device);
+            if (!ReferenceEquals(this._sceneRenderer.Terrain, this._terrain))
+                this._sceneRenderer.SetTerrain(this._terrain);
             this._sceneRenderer.Draw(view);
         }
         finally {
