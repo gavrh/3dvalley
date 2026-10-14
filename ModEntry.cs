@@ -44,6 +44,7 @@ public sealed class ModEntry : Mod {
 
         helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
         helper.Events.Display.RenderedHud += this.OnRenderedHud;
+        helper.Events.Display.Rendered += this.OnRendered;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
         helper.Events.GameLoop.SaveLoaded += (_, _) => this.OnLocationChanged("save loaded");
@@ -75,6 +76,10 @@ public sealed class ModEntry : Mod {
 
         this._pixel ??= CreatePixel();
         this._overlay.Draw(e.SpriteBatch, this._pixel);
+    }
+
+    private void OnRendered(object? sender, RenderedEventArgs e) {
+        this._overlay.SampleFrame();
     }
 
     private void OnButtonPressed(object? sender, ButtonPressedEventArgs e) {

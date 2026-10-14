@@ -18,8 +18,28 @@ internal sealed class DebugOverlay {
     private bool hasLastTick;
     private double sinceRefresh = RefreshSeconds;
 
+    internal void SampleFrame() {
+        long now = this.clock.ElapsedTicks;
+        if (!this.hasLastTick) {
+            this.hasLastTick = true;
+            this.lastTicks = now;
+            return;
+        }
+
+        float seconds = (now - this.lastTicks) / (float)Stopwatch.Frequency;
+        this.lastTicks = now;
+        if (seconds <= 0f)
+            return;
+
+        this.frameSeconds[this.frameIndex] = seconds;
+        this.frameIndex = (this.frameIndex + 1) % FrameSampleCount;
+        if (this.frameCount < FrameSampleCount)
+            this.frameCount++;
+
+        this.sinceRefresh += seconds;
+    }
+
     internal void Tick(FreeCamera camera, TerrainMesh? terrain, SceneRenderer? renderer, double buildMs) {
-        this.sinceRefresh += this.MeasureFrame();
         if (this.sinceRefresh < RefreshSeconds && this.lines.Count > 0)
             return;
 
@@ -66,27 +86,6 @@ internal sealed class DebugOverlay {
             batch.DrawString(Game1.smallFont, line, position, Color.White);
             position.Y += lineHeight;
         }
-    }
-
-    private float MeasureFrame() {
-        long now = this.clock.ElapsedTicks;
-        if (!this.hasLastTick) {
-            this.hasLastTick = true;
-            this.lastTicks = now;
-            return 0f;
-        }
-
-        float seconds = (now - this.lastTicks) / (float)Stopwatch.Frequency;
-        this.lastTicks = now;
-        if (seconds <= 0f)
-            return 0f;
-
-        this.frameSeconds[this.frameIndex] = seconds;
-        this.frameIndex = (this.frameIndex + 1) % FrameSampleCount;
-        if (this.frameCount < FrameSampleCount)
-            this.frameCount++;
-
-        return seconds;
     }
 
     private float AverageFrameSeconds() {
