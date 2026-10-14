@@ -49,6 +49,7 @@ public sealed class ModEntry : Mod {
         helper.Events.GameLoop.SaveLoaded += (_, _) => this.OnLocationChanged("save loaded");
         helper.Events.Player.Warped += (_, _) => this.OnLocationChanged("location changed");
         helper.ConsoleCommands.Add("3dvalley_map", "Log the current location's map, layers, tilesheets, and a tile-property sample.", (_, _) => MapInspector.LogCurrentLocation("command"));
+        helper.ConsoleCommands.Add("3dvalley_perf", "Log the 3D Valley performance summary (FPS, frame time, camera, terrain counts, build time, draw calls).", (_, _) => this.LogPerfSummary());
     }
 
     private void OnRenderedWorld(object? sender, RenderedWorldEventArgs e) {
@@ -119,6 +120,11 @@ public sealed class ModEntry : Mod {
             Log.Info($"  textured tilesheet '{tilesheet.ImageSource}': {tilesheet.TileCount} tiles.");
 
         this.PlaceCamera(terrain);
+    }
+
+    private void LogPerfSummary() {
+        foreach (string line in this._overlay.Build(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs))
+            Log.Info(line);
     }
 
     private Texture2D LoadTilesheetTexture(string imageSource) {
