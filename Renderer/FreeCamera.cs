@@ -26,6 +26,14 @@ internal sealed class FreeCamera {
         this.pitch = MathHelper.Clamp(this.pitch - deltaY * LookSensitivity, -MaxPitch, MaxPitch);
     }
 
+    internal void LookAt(Vector3 position, Vector3 target) {
+        this.position = position;
+
+        Vector3 direction = Vector3.Normalize(target - position);
+        this.pitch = MathF.Asin(MathHelper.Clamp(direction.Y, -1f, 1f));
+        this.yaw = MathF.Atan2(direction.X, -direction.Z);
+    }
+
     internal Matrix GetView() {
         Vector3 direction = new(
             MathF.Cos(this.pitch) * MathF.Sin(this.yaw),
