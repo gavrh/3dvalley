@@ -9,8 +9,6 @@ using ThreeDValley.Renderer;
 namespace ThreeDValley;
 
 public sealed class ModEntry : Mod {
-    private const string TestBillboardSprite = "Characters/Abigail";
-
     internal static ModConfig Config { get; private set; } = null!;
 
     private readonly FreeCamera _camera = new();
@@ -21,8 +19,10 @@ public sealed class ModEntry : Mod {
     private SceneRenderer? _sceneRenderer;
     private RenderView? _renderView;
     private TerrainMesh? _terrain;
+    private SpriteResolver? _spriteResolver;
     private IReadOnlyList<Billboard>? _billboards;
-    private Texture2D? _billboardTexture;
+    private int _objectCount;
+    private int _skippedSpriteCount;
     private int _sceneWidth;
     private int _sceneHeight;
     private double _lastTerrainBuildMs;
@@ -106,14 +106,17 @@ public sealed class ModEntry : Mod {
         MapInspector.LogCurrentLocation(reason);
 
         GameLocation? location = Game1.currentLocation;
-        TerrainMesh? previous = this._terrain;
+        TerrainMesh? previousTerrain = this._terrain;
+        SpriteResolver? previousSprites = this._spriteResolver;
 
         if (location is null) {
             this._terrain = null;
             this._billboards = null;
-            this._billboardTexture?.Dispose();
-            this._billboardTexture = null;
-            previous?.Dispose();
+            this._spriteResolver = null;
+            this._objectCount = 0;
+            this._skippedSpriteCount = 0;
+            previousSprites?.Dispose();
+            previousTerrain?.Dispose();
             return;
         }
 
@@ -123,7 +126,7 @@ public sealed class ModEntry : Mod {
         this._lastTerrainBuildMs = stopwatch.Elapsed.TotalMilliseconds;
 
         this._terrain = terrain;
-        previous?.Dispose();
+        previousTerrain?.Dispose();
 
         Log.Info($"Terrain mesh for {location.NameOrUniqueName}: {terrain.TileCount} tiles, "
             + $"{terrain.TilesheetCount} tilesheets, {terrain.VertexCount} vertices, "
@@ -131,12 +134,26 @@ public sealed class ModEntry : Mod {
         foreach (TerrainMesh.TilesheetGeometry tilesheet in terrain.Tilesheets)
             Log.Info($"  textured tilesheet '{tilesheet.ImageSource}': {tilesheet.TileCount} tiles.");
 
-        this.BuildTestBillboards(terrain);
+        var sprites = new SpriteResolver(this.LoadTextureCopy);
+        var billboardStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        IReadOnlyList<Billboard> billboards = ObjectBillboards.Build(location, terrain, sprites, out ObjectBillboardStats stats);
+        billboardStopwatch.Stop();
+
+        this._billboards = billboards;
+        this._spriteResolver = sprites;
+        this._objectCount = stats.ObjectCount;
+        this._skippedSpriteCount = stats.SkippedCount;
+        previousSprites?.Dispose();
+
+        Log.Info($"Object billboards for {location.NameOrUniqueName}: {stats.ObjectCount} objects, "
+            + $"{stats.SkippedCount} skipped, {sprites.TextureCount} textures, "
+            + $"built in {billboardStopwatch.Elapsed.TotalMilliseconds:F1} ms.");
+
         this.PlaceCamera(terrain);
     }
 
     private void LogPerfSummary() {
-        foreach (string line in this._overlay.Build(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs))
+        foreach (string line in this._overlay.Build(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount))
             Log.Info(line);
     }
 
@@ -150,30 +167,6 @@ public sealed class ModEntry : Mod {
         return copy;
     }
 
-    private void BuildTestBillboards(TerrainMesh terrain) {
-        this._billboards = null;
-        this._billboardTexture?.Dispose();
-        this._billboardTexture = null;
-
-        if (terrain.TilesWide == 0 || terrain.TilesHigh == 0) {
-            this._billboards = null;
-            return;
-        }
-
-        Texture2D texture = this.LoadTextureCopy(TestBillboardSprite);
-        this._billboardTexture = texture;
-
-        var source = new Rectangle(0, 0, Math.Min(16, texture.Width), Math.Min(32, texture.Height));
-        int tileX = terrain.TilesWide / 2;
-        int tileY = terrain.TilesHigh / 2;
-        var baseCenter = new Vector3(tileX + 0.5f, terrain.HeightAt(tileX, tileY), tileY + 0.5f);
-
-        this._billboards = new[] { new Billboard(baseCenter, source, texture) };
-
-        Log.Info($"Test billboard '{TestBillboardSprite}' {texture.Width}x{texture.Height}, source {source}, "
-            + $"at ({baseCenter.X:F1}, {baseCenter.Y:F1}, {baseCenter.Z:F1}).");
-    }
-
     private void PlaceCamera(TerrainMesh terrain) {
         float span = MathF.Max(terrain.TilesWide, terrain.TilesHigh);
         var target = new Vector3(terrain.TilesWide * 0.5f, 0f, terrain.TilesHigh * 0.5f);
@@ -182,7 +175,7 @@ public sealed class ModEntry : Mod {
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e) {
-        this._overlay.Tick(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs);
+        this._overlay.Tick(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount);
 
         bool active = this.IsCameraActive();
 
