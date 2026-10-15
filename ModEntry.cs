@@ -10,6 +10,8 @@ using ThreeDValley.Renderer;
 namespace ThreeDValley;
 
 public sealed class ModEntry : Mod {
+    private const double RebuildDelaySeconds = 0.25;
+
     internal static ModConfig Config { get; private set; } = null!;
 
     private readonly FreeCamera _camera = new();
@@ -24,6 +26,12 @@ public sealed class ModEntry : Mod {
     private IReadOnlyList<Billboard>? _billboards;
     private int _objectCount;
     private int _skippedSpriteCount;
+    private int _featureCount;
+    private int _featureSkippedCount;
+    private int _rebuildCount;
+    private double _lastRebuildMs;
+    private bool _sceneDirty;
+    private double _rebuildCountdown;
     private int _sceneWidth;
     private int _sceneHeight;
     private double _lastTerrainBuildMs;
@@ -48,6 +56,7 @@ public sealed class ModEntry : Mod {
         Log.Info($"3D Valley {this.ModManifest.Version} loaded.");
 
         WorldDrawSuppression.TryApply(this.TryDrawWorldTakeover);
+        SceneMutationObserver.TryApply(this.MarkSceneDirty);
 
         helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
         helper.Events.Display.RenderedHud += this.OnRenderedHud;
@@ -56,6 +65,7 @@ public sealed class ModEntry : Mod {
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
         helper.Events.GameLoop.SaveLoaded += (_, _) => this.OnLocationChanged("save loaded");
         helper.Events.Player.Warped += (_, _) => this.OnLocationChanged("location changed");
+        helper.Events.GameLoop.DayStarted += (_, _) => this.MarkSceneDirty();
         helper.ConsoleCommands.Add("3dvalley_map", "Log the current location's map, layers, tilesheets, and a tile-property sample.", (_, _) => MapInspector.LogCurrentLocation("command"));
         helper.ConsoleCommands.Add("3dvalley_perf", "Log the 3D Valley performance summary (FPS, frame time, camera, terrain counts, build time, draw calls).", (_, _) => this.LogPerfSummary());
     }
@@ -152,6 +162,9 @@ public sealed class ModEntry : Mod {
             this._spriteResolver = null;
             this._objectCount = 0;
             this._skippedSpriteCount = 0;
+            this._featureCount = 0;
+            this._featureSkippedCount = 0;
+            this._sceneDirty = false;
             previousSprites?.Dispose();
             previousTerrain?.Dispose();
             return;
@@ -171,26 +184,69 @@ public sealed class ModEntry : Mod {
         foreach (TerrainMesh.TilesheetGeometry tilesheet in terrain.Tilesheets)
             Log.Info($"  textured tilesheet '{tilesheet.ImageSource}': {tilesheet.TileCount} tiles.");
 
-        var sprites = new SpriteResolver(this.LoadTextureCopy);
-        var billboardStopwatch = System.Diagnostics.Stopwatch.StartNew();
-        IReadOnlyList<Billboard> billboards = ObjectBillboards.Build(location, terrain, sprites, out ObjectBillboardStats stats);
-        billboardStopwatch.Stop();
-
-        this._billboards = billboards;
-        this._spriteResolver = sprites;
-        this._objectCount = stats.ObjectCount;
-        this._skippedSpriteCount = stats.SkippedCount;
+        this._spriteResolver = new SpriteResolver(this.LoadTextureCopy);
         previousSprites?.Dispose();
-
-        Log.Info($"Object billboards for {location.NameOrUniqueName}: {stats.ObjectCount} objects, "
-            + $"{stats.SkippedCount} skipped, {sprites.TextureCount} textures, "
-            + $"built in {billboardStopwatch.Elapsed.TotalMilliseconds:F1} ms.");
+        this.RebuildBillboards(location, "location changed");
 
         this.PlaceCamera(terrain);
     }
 
+    private void MarkSceneDirty() {
+        if (this._terrain is null || Game1.currentLocation is null)
+            return;
+
+        this._sceneDirty = true;
+        this._rebuildCountdown = RebuildDelaySeconds;
+    }
+
+    private void UpdateRebuild() {
+        if (!this._sceneDirty)
+            return;
+
+        GameLocation? location = Game1.currentLocation;
+        if (location is null || this._terrain is null || this._spriteResolver is null) {
+            this._sceneDirty = false;
+            return;
+        }
+
+        this._rebuildCountdown -= Game1.currentGameTime.ElapsedGameTime.TotalSeconds;
+        if (this._rebuildCountdown > 0)
+            return;
+
+        this.RebuildBillboards(location, "live change");
+    }
+
+    private void RebuildBillboards(GameLocation location, string reason) {
+        if (this._terrain is null || this._spriteResolver is null)
+            return;
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        IReadOnlyList<Billboard> features = TerrainFeatureBillboards.Build(location, this._terrain, this._spriteResolver, out TerrainFeatureBillboardStats featureStats);
+        IReadOnlyList<Billboard> objects = ObjectBillboards.Build(location, this._terrain, this._spriteResolver, out ObjectBillboardStats objectStats);
+        stopwatch.Stop();
+
+        var billboards = new List<Billboard>(features.Count + objects.Count);
+        billboards.AddRange(features);
+        billboards.AddRange(objects);
+
+        this._billboards = billboards;
+        this._featureCount = featureStats.FeatureCount;
+        this._featureSkippedCount = featureStats.SkippedCount;
+        this._objectCount = objectStats.ObjectCount;
+        this._skippedSpriteCount = objectStats.SkippedCount;
+        this._lastRebuildMs = stopwatch.Elapsed.TotalMilliseconds;
+        this._rebuildCount++;
+        this._sceneDirty = false;
+        this._rebuildCountdown = RebuildDelaySeconds;
+
+        Log.Info($"Billboards for {location.NameOrUniqueName} ({reason}): {featureStats.FeatureCount} features "
+            + $"({featureStats.SkippedCount} skipped), {objectStats.ObjectCount} objects "
+            + $"({objectStats.SkippedCount} skipped), {this._spriteResolver.TextureCount} textures, "
+            + $"rebuilt in {stopwatch.Elapsed.TotalMilliseconds:F1} ms (rebuild #{this._rebuildCount}).");
+    }
+
     private void LogPerfSummary() {
-        foreach (string line in this._overlay.Build(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount, this.IsWorldSuppressionActive(), WorldDrawSuppression.IsApplied, WorldDrawSuppression.LastVanillaDrawMs))
+        foreach (string line in this._overlay.Build(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount, this._featureCount, this._featureSkippedCount, this._rebuildCount, this._lastRebuildMs, this.IsWorldSuppressionActive(), WorldDrawSuppression.IsApplied, WorldDrawSuppression.LastVanillaDrawMs))
             Log.Info(line);
     }
 
@@ -212,7 +268,8 @@ public sealed class ModEntry : Mod {
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e) {
-        this._overlay.Tick(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount, this.IsWorldSuppressionActive(), WorldDrawSuppression.IsApplied, WorldDrawSuppression.LastVanillaDrawMs);
+        this.UpdateRebuild();
+        this._overlay.Tick(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount, this._featureCount, this._featureSkippedCount, this._rebuildCount, this._lastRebuildMs, this.IsWorldSuppressionActive(), WorldDrawSuppression.IsApplied, WorldDrawSuppression.LastVanillaDrawMs);
 
         bool active = this.IsCameraActive();
 
