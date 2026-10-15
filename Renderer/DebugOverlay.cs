@@ -39,15 +39,15 @@ internal sealed class DebugOverlay {
         this.sinceRefresh += seconds;
     }
 
-    internal void Tick(FreeCamera camera, TerrainMesh? terrain, SceneRenderer? renderer, double buildMs) {
+    internal void Tick(FreeCamera camera, TerrainMesh? terrain, SceneRenderer? renderer, double buildMs, int objectCount, int skippedCount) {
         if (this.sinceRefresh < RefreshSeconds && this.lines.Count > 0)
             return;
 
         this.sinceRefresh = 0;
-        this.Build(camera, terrain, renderer, buildMs);
+        this.Build(camera, terrain, renderer, buildMs, objectCount, skippedCount);
     }
 
-    internal IReadOnlyList<string> Build(FreeCamera camera, TerrainMesh? terrain, SceneRenderer? renderer, double buildMs) {
+    internal IReadOnlyList<string> Build(FreeCamera camera, TerrainMesh? terrain, SceneRenderer? renderer, double buildMs, int objectCount, int skippedCount) {
         float average = this.AverageFrameSeconds();
         float fps = average > 0f ? 1f / average : 0f;
         Vector3 position = camera.Position;
@@ -60,7 +60,7 @@ internal sealed class DebugOverlay {
         }
         else {
             this.lines.Add($"terrain {terrain.TileCount} tiles, {terrain.VertexCount} verts, {terrain.TriangleCount} tris");
-            this.lines.Add($"tilesheets {terrain.TilesheetCount}, billboards {(renderer is null ? "-" : renderer.BillboardCount.ToString())}, draw calls {(renderer is null ? "-" : renderer.DrawCallCount.ToString())}, build {buildMs:F1} ms");
+            this.lines.Add($"tilesheets {terrain.TilesheetCount}, billboards {(renderer is null ? "-" : renderer.BillboardCount.ToString())}, objects {objectCount}, sprites skipped {skippedCount}, draw calls {(renderer is null ? "-" : renderer.DrawCallCount.ToString())}, build {buildMs:F1} ms");
         }
 
         return this.lines;
