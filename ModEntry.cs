@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Input;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using ThreeDValley.Integration;
 using ThreeDValley.Renderer;
 
 namespace ThreeDValley;
@@ -46,6 +47,8 @@ public sealed class ModEntry : Mod {
 
         Log.Info($"3D Valley {this.ModManifest.Version} loaded.");
 
+        WorldDrawSuppression.TryApply(this.TryDrawWorldTakeover);
+
         helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
         helper.Events.Display.RenderedHud += this.OnRenderedHud;
         helper.Events.Display.Rendered += this.OnRendered;
@@ -72,6 +75,40 @@ public sealed class ModEntry : Mod {
         }
 
         this.DrawMarker(e.SpriteBatch);
+    }
+
+    private bool TryDrawWorldTakeover() {
+        if (!this.IsWorldSuppressionActive())
+            return false;
+
+        try {
+            SpriteBatch batch = Game1.spriteBatch;
+            batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp);
+            bool drawn;
+            try {
+                drawn = this.DrawComposite(batch);
+                if (drawn)
+                    this.DrawMarker(batch);
+            }
+            finally {
+                batch.End();
+            }
+
+            return drawn;
+        }
+        catch (Exception ex) {
+            this._compositeFailed = true;
+            Log.Error($"Disabling the composite after a draw error: {ex}");
+            return false;
+        }
+    }
+
+    private bool IsWorldSuppressionActive() {
+        return WorldDrawSuppression.IsApplied
+            && Config.SuppressVanillaWorld
+            && Config.Enabled
+            && !this._compositeFailed
+            && Game1.currentLocation is not null;
     }
 
     private void OnRenderedHud(object? sender, RenderedHudEventArgs e) {
@@ -153,7 +190,7 @@ public sealed class ModEntry : Mod {
     }
 
     private void LogPerfSummary() {
-        foreach (string line in this._overlay.Build(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount))
+        foreach (string line in this._overlay.Build(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount, this.IsWorldSuppressionActive(), WorldDrawSuppression.IsApplied, WorldDrawSuppression.LastVanillaDrawMs))
             Log.Info(line);
     }
 
@@ -175,7 +212,7 @@ public sealed class ModEntry : Mod {
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e) {
-        this._overlay.Tick(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount);
+        this._overlay.Tick(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount, this.IsWorldSuppressionActive(), WorldDrawSuppression.IsApplied, WorldDrawSuppression.LastVanillaDrawMs);
 
         bool active = this.IsCameraActive();
 
@@ -254,11 +291,25 @@ public sealed class ModEntry : Mod {
         return new Point(bounds.Width / 2, bounds.Height / 2);
     }
 
-    private void DrawComposite(SpriteBatch batch) {
+    private bool DrawComposite(SpriteBatch batch) {
         GraphicsDevice device = Game1.graphics.GraphicsDevice;
         if (!this.EnsureSceneTarget(device))
-            return;
+            return false;
 
+        Rectangle destination;
+        batch.End();
+        try {
+            destination = this.RenderScene(device);
+        }
+        finally {
+            batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp);
+        }
+
+        batch.Draw(this._sceneTarget, destination, Color.White);
+        return true;
+    }
+
+    private Rectangle RenderScene(GraphicsDevice device) {
         RenderView view = this._renderView!;
         view.View = this._camera.GetView();
 
@@ -266,7 +317,6 @@ public sealed class ModEntry : Mod {
         Viewport previousViewport = device.Viewport;
 
         try {
-            batch.End();
             device.SetRenderTarget(view.RenderTarget);
             device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer | ClearOptions.Stencil, Color.CornflowerBlue, 1f, 0);
 
@@ -280,13 +330,11 @@ public sealed class ModEntry : Mod {
         finally {
             this.RestoreRenderTarget(device, previousTargets);
             device.Viewport = previousViewport;
-            batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp);
         }
 
-        Rectangle destination = previousTargets.Length > 0 && previousTargets[0].RenderTarget is RenderTarget2D target
+        return previousTargets.Length > 0 && previousTargets[0].RenderTarget is RenderTarget2D target
             ? target.Bounds
             : new Rectangle(0, 0, device.PresentationParameters.BackBufferWidth, device.PresentationParameters.BackBufferHeight);
-        batch.Draw(this._sceneTarget, destination, Color.White);
     }
 
     private bool EnsureSceneTarget(GraphicsDevice device) {

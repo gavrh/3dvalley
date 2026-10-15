@@ -10,4 +10,6 @@ public sealed class ModConfig {
     public bool ShowDebugOverlay { get; set; } = false;
 
     public SButton DebugOverlayKey { get; set; } = SButton.F6;
+
+    public bool SuppressVanillaWorld { get; set; } = true;
 }
