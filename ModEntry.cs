@@ -190,7 +190,7 @@ public sealed class ModEntry : Mod {
     }
 
     private void LogPerfSummary() {
-        foreach (string line in this._overlay.Build(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount))
+        foreach (string line in this._overlay.Build(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount, this.IsWorldSuppressionActive(), WorldDrawSuppression.IsApplied, WorldDrawSuppression.LastVanillaDrawMs))
             Log.Info(line);
     }
 
@@ -212,7 +212,7 @@ public sealed class ModEntry : Mod {
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e) {
-        this._overlay.Tick(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount);
+        this._overlay.Tick(this._camera, this._terrain, this._sceneRenderer, this._lastTerrainBuildMs, this._objectCount, this._skippedSpriteCount, this.IsWorldSuppressionActive(), WorldDrawSuppression.IsApplied, WorldDrawSuppression.LastVanillaDrawMs);
 
         bool active = this.IsCameraActive();
 

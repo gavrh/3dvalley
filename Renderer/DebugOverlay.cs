@@ -39,15 +39,15 @@ internal sealed class DebugOverlay {
         this.sinceRefresh += seconds;
     }
 
-    internal void Tick(FreeCamera camera, TerrainMesh? terrain, SceneRenderer? renderer, double buildMs, int objectCount, int skippedCount) {
+    internal void Tick(FreeCamera camera, TerrainMesh? terrain, SceneRenderer? renderer, double buildMs, int objectCount, int skippedCount, bool worldSuppressed, bool suppressionAvailable, double vanillaWorldMs) {
         if (this.sinceRefresh < RefreshSeconds && this.lines.Count > 0)
             return;
 
         this.sinceRefresh = 0;
-        this.Build(camera, terrain, renderer, buildMs, objectCount, skippedCount);
+        this.Build(camera, terrain, renderer, buildMs, objectCount, skippedCount, worldSuppressed, suppressionAvailable, vanillaWorldMs);
     }
 
-    internal IReadOnlyList<string> Build(FreeCamera camera, TerrainMesh? terrain, SceneRenderer? renderer, double buildMs, int objectCount, int skippedCount) {
+    internal IReadOnlyList<string> Build(FreeCamera camera, TerrainMesh? terrain, SceneRenderer? renderer, double buildMs, int objectCount, int skippedCount, bool worldSuppressed, bool suppressionAvailable, double vanillaWorldMs) {
         float average = this.AverageFrameSeconds();
         float fps = average > 0f ? 1f / average : 0f;
         Vector3 position = camera.Position;
@@ -62,6 +62,13 @@ internal sealed class DebugOverlay {
             this.lines.Add($"terrain {terrain.TileCount} tiles, {terrain.VertexCount} verts, {terrain.TriangleCount} tris");
             this.lines.Add($"tilesheets {terrain.TilesheetCount}, billboards {(renderer is null ? "-" : renderer.BillboardCount.ToString())}, objects {objectCount}, sprites skipped {skippedCount}, draw calls {(renderer is null ? "-" : renderer.DrawCallCount.ToString())}, build {buildMs:F1} ms");
         }
+
+        if (!suppressionAvailable)
+            this.lines.Add("world vanilla (suppression unavailable)");
+        else if (worldSuppressed)
+            this.lines.Add($"world suppressed, vanilla world ~{vanillaWorldMs:F1} ms saved");
+        else
+            this.lines.Add($"world vanilla (suppression off), draw {vanillaWorldMs:F1} ms");
 
         return this.lines;
     }
