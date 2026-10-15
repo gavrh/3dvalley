@@ -21,12 +21,14 @@ internal sealed class TerrainMesh : IDisposable {
     private static readonly Color CliffColor = new(120, 106, 92);
 
     private readonly TilesheetGeometry[] tilesheets;
+    private readonly float[] heights;
     private bool disposed;
 
-    private TerrainMesh(VertexPositionColor[] coloredVertices, int[] coloredIndices, TilesheetGeometry[] tilesheets, int tilesWide, int tilesHigh) {
+    private TerrainMesh(VertexPositionColor[] coloredVertices, int[] coloredIndices, TilesheetGeometry[] tilesheets, float[] heights, int tilesWide, int tilesHigh) {
         this.ColoredVertices = coloredVertices;
         this.ColoredIndices = coloredIndices;
         this.tilesheets = tilesheets;
+        this.heights = heights;
         this.TilesWide = tilesWide;
         this.TilesHigh = tilesHigh;
     }
@@ -49,10 +51,17 @@ internal sealed class TerrainMesh : IDisposable {
 
     internal int TriangleCount => this.ColoredIndices.Length / 3 + this.tilesheets.Sum(geometry => geometry.TriangleCount);
 
+    internal float HeightAt(int tileX, int tileY) {
+        if (tileX < 0 || tileY < 0 || tileX >= this.TilesWide || tileY >= this.TilesHigh)
+            return GradeHeight;
+
+        return this.heights[tileY * this.TilesWide + tileX];
+    }
+
     internal static TerrainMesh Build(GameLocation location, Func<string, Texture2D> loadTexture) {
         Layer? back = location.Map?.GetLayer("Back") ?? location.Map?.Layers.FirstOrDefault();
         if (back is null)
-            return new TerrainMesh(Array.Empty<VertexPositionColor>(), Array.Empty<int>(), Array.Empty<TilesheetGeometry>(), 0, 0);
+            return new TerrainMesh(Array.Empty<VertexPositionColor>(), Array.Empty<int>(), Array.Empty<TilesheetGeometry>(), Array.Empty<float>(), 0, 0);
 
         Layer? buildings = location.Map?.GetLayer("Buildings");
         int width = back.LayerWidth;
@@ -150,7 +159,7 @@ internal sealed class TerrainMesh : IDisposable {
             tilesheets.Add(new TilesheetGeometry(sheet.ImageSource, texture, builder.Vertices.ToArray(), builder.Indices.ToArray()));
         }
 
-        return new TerrainMesh(coloredVertices.ToArray(), coloredIndices.ToArray(), tilesheets.ToArray(), width, height);
+        return new TerrainMesh(coloredVertices.ToArray(), coloredIndices.ToArray(), tilesheets.ToArray(), heights, width, height);
     }
 
     private static Dictionary<TileSheet, Texture2D?> LoadTextures(TileTexture?[] tileTextures, Func<string, Texture2D> loadTexture) {

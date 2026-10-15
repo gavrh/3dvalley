@@ -60,7 +60,7 @@ internal sealed class DebugOverlay {
         }
         else {
             this.lines.Add($"terrain {terrain.TileCount} tiles, {terrain.VertexCount} verts, {terrain.TriangleCount} tris");
-            this.lines.Add($"tilesheets {terrain.TilesheetCount}, draw calls {(renderer is null ? "-" : renderer.DrawCallCount.ToString())}, build {buildMs:F1} ms");
+            this.lines.Add($"tilesheets {terrain.TilesheetCount}, billboards {(renderer is null ? "-" : renderer.BillboardCount.ToString())}, draw calls {(renderer is null ? "-" : renderer.DrawCallCount.ToString())}, build {buildMs:F1} ms");
         }
 
         return this.lines;

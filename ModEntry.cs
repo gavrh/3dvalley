@@ -9,6 +9,8 @@ using ThreeDValley.Renderer;
 namespace ThreeDValley;
 
 public sealed class ModEntry : Mod {
+    private const string TestBillboardSprite = "Characters/Abigail";
+
     internal static ModConfig Config { get; private set; } = null!;
 
     private readonly FreeCamera _camera = new();
@@ -19,6 +21,8 @@ public sealed class ModEntry : Mod {
     private SceneRenderer? _sceneRenderer;
     private RenderView? _renderView;
     private TerrainMesh? _terrain;
+    private IReadOnlyList<Billboard>? _billboards;
+    private Texture2D? _billboardTexture;
     private int _sceneWidth;
     private int _sceneHeight;
     private double _lastTerrainBuildMs;
@@ -106,12 +110,15 @@ public sealed class ModEntry : Mod {
 
         if (location is null) {
             this._terrain = null;
+            this._billboards = null;
+            this._billboardTexture?.Dispose();
+            this._billboardTexture = null;
             previous?.Dispose();
             return;
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        TerrainMesh terrain = TerrainMesh.Build(location, this.LoadTilesheetTexture);
+        TerrainMesh terrain = TerrainMesh.Build(location, this.LoadTextureCopy);
         stopwatch.Stop();
         this._lastTerrainBuildMs = stopwatch.Elapsed.TotalMilliseconds;
 
@@ -124,6 +131,7 @@ public sealed class ModEntry : Mod {
         foreach (TerrainMesh.TilesheetGeometry tilesheet in terrain.Tilesheets)
             Log.Info($"  textured tilesheet '{tilesheet.ImageSource}': {tilesheet.TileCount} tiles.");
 
+        this.BuildTestBillboards(terrain);
         this.PlaceCamera(terrain);
     }
 
@@ -132,7 +140,7 @@ public sealed class ModEntry : Mod {
             Log.Info(line);
     }
 
-    private Texture2D LoadTilesheetTexture(string imageSource) {
+    private Texture2D LoadTextureCopy(string imageSource) {
         Texture2D source = this.Helper.GameContent.Load<Texture2D>(imageSource);
 
         var copy = new Texture2D(Game1.graphics.GraphicsDevice, source.Width, source.Height, false, source.Format);
@@ -140,6 +148,30 @@ public sealed class ModEntry : Mod {
         source.GetData(pixels);
         copy.SetData(pixels);
         return copy;
+    }
+
+    private void BuildTestBillboards(TerrainMesh terrain) {
+        this._billboards = null;
+        this._billboardTexture?.Dispose();
+        this._billboardTexture = null;
+
+        if (terrain.TilesWide == 0 || terrain.TilesHigh == 0) {
+            this._billboards = null;
+            return;
+        }
+
+        Texture2D texture = this.LoadTextureCopy(TestBillboardSprite);
+        this._billboardTexture = texture;
+
+        var source = new Rectangle(0, 0, Math.Min(16, texture.Width), Math.Min(32, texture.Height));
+        int tileX = terrain.TilesWide / 2;
+        int tileY = terrain.TilesHigh / 2;
+        var baseCenter = new Vector3(tileX + 0.5f, terrain.HeightAt(tileX, tileY), tileY + 0.5f);
+
+        this._billboards = new[] { new Billboard(baseCenter, source, texture) };
+
+        Log.Info($"Test billboard '{TestBillboardSprite}' {texture.Width}x{texture.Height}, source {source}, "
+            + $"at ({baseCenter.X:F1}, {baseCenter.Y:F1}, {baseCenter.Z:F1}).");
     }
 
     private void PlaceCamera(TerrainMesh terrain) {
@@ -248,6 +280,8 @@ public sealed class ModEntry : Mod {
             this._sceneRenderer ??= new SceneRenderer(device);
             if (!ReferenceEquals(this._sceneRenderer.Terrain, this._terrain))
                 this._sceneRenderer.SetTerrain(this._terrain);
+            if (!ReferenceEquals(this._sceneRenderer.Billboards, this._billboards))
+                this._sceneRenderer.SetBillboards(this._billboards);
             this._sceneRenderer.Draw(view);
         }
         finally {
