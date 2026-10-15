@@ -151,6 +151,7 @@ public sealed class ModEntry : Mod {
     }
 
     private void BuildTestBillboards(TerrainMesh terrain) {
+        this._billboards = null;
         this._billboardTexture?.Dispose();
         this._billboardTexture = null;
 
