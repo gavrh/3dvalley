@@ -4,7 +4,10 @@ using Microsoft.Xna.Framework.Graphics;
 namespace ThreeDValley.Renderer;
 
 internal sealed class SceneRenderer : IDisposable {
-    private static readonly Comparison<BillboardDraw> BackToFront = (a, b) => b.DistanceSquared.CompareTo(a.DistanceSquared);
+    private static readonly Comparison<BillboardDraw> BackToFront = (a, b) => {
+        int byDistance = b.DistanceSquared.CompareTo(a.DistanceSquared);
+        return byDistance != 0 ? byDistance : a.Billboard.Layer.CompareTo(b.Billboard.Layer);
+    };
     private static readonly short[] QuadIndices = { 0, 1, 2, 0, 2, 3 };
 
     private readonly GraphicsDevice device;

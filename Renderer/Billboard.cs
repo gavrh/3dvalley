@@ -6,10 +6,11 @@ namespace ThreeDValley.Renderer;
 internal sealed class Billboard {
     internal const float PixelsPerWorldUnit = 16f;
 
-    internal Billboard(Vector3 baseCenter, Rectangle source, Texture2D texture) {
+    internal Billboard(Vector3 baseCenter, Rectangle source, Texture2D texture, int layer = 0) {
         this.BaseCenter = baseCenter;
         this.Source = source;
         this.Texture = texture;
+        this.Layer = layer;
         this.Width = source.Width / PixelsPerWorldUnit;
         this.Height = source.Height / PixelsPerWorldUnit;
     }
@@ -19,6 +20,8 @@ internal sealed class Billboard {
     internal Rectangle Source { get; }
 
     internal Texture2D Texture { get; }
+
+    internal int Layer { get; }
 
     internal float Width { get; }
 
