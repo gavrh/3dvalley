@@ -1,6 +1,8 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewValley;
+using StardewValley.GameData.WildTrees;
+using StardewValley.ItemTypeDefinitions;
 using StardewValley.TerrainFeatures;
 using ThreeDValley.Renderer;
 
@@ -18,6 +20,10 @@ internal static class TerrainFeatureBillboards {
 
     private const int TreeYoungStage = 5;
     private const int FruitTreeYoungStage = 4;
+
+    private const int TrunkLayer = 0;
+    private const int CanopyLayer = 1;
+    private const int FruitLayer = 2;
 
     internal static IReadOnlyList<Billboard> Build(GameLocation location, TerrainMesh terrain, SpriteResolver sprites, out TerrainFeatureBillboardStats stats) {
         var billboards = new List<Billboard>(location.terrainFeatures.Length + location.largeTerrainFeatures.Count);
@@ -136,17 +142,18 @@ internal static class TerrainFeatureBillboards {
     }
 
     private static void BuildTree(Tree tree, Vector2 tile, TerrainMesh terrain, SpriteResolver sprites, List<Billboard> billboards) {
-        int growthStage = tree.growthStage.Value;
-        if (growthStage >= TreeYoungStage || tree.stump.Value)
+        if (tree.growthStage.Value < TreeYoungStage) {
+            BuildYoungTree(tree, tile, terrain, sprites, billboards);
             return;
-
-        string? textureName = tree.TextureName;
-        if (textureName is null) {
-            _ = tree.texture.Value;
-            textureName = tree.TextureName;
         }
 
-        Texture2D? texture = sprites.Resolve(textureName);
+        BuildMatureTree(tree, tile, terrain, sprites, billboards);
+    }
+
+    private static void BuildYoungTree(Tree tree, Vector2 tile, TerrainMesh terrain, SpriteResolver sprites, List<Billboard> billboards) {
+        int growthStage = tree.growthStage.Value;
+
+        Texture2D? texture = sprites.Resolve(TreeTextureName(tree));
         if (texture is null)
             return;
 
@@ -157,21 +164,57 @@ internal static class TerrainFeatureBillboards {
             _ => new Rectangle(0, 96, 16, 32),
         };
 
-        var baseCenter = new Vector3(
-            (tile.X * 64f + 32f) / PixelsPerTile,
-            terrain.HeightAt((int)tile.X, (int)tile.Y),
-            (tile.Y * 64f + 64f) / PixelsPerTile);
+        billboards.Add(new Billboard(TileBaseCenter(tile, terrain), source, texture));
+    }
 
-        billboards.Add(new Billboard(baseCenter, source, texture));
+    private static void BuildMatureTree(Tree tree, Vector2 tile, TerrainMesh terrain, SpriteResolver sprites, List<Billboard> billboards) {
+        if (tree.health.Value <= -99f)
+            return;
+
+        Texture2D? texture = sprites.Resolve(TreeTextureName(tree));
+        if (texture is null)
+            return;
+
+        Vector3 baseCenter = TileBaseCenter(tile, terrain);
+        bool moss = tree.hasMoss.Value;
+
+        if (!tree.stump.Value) {
+            WildTreeData? data = tree.GetData();
+            Rectangle canopy = Tree.treeTopSourceRect;
+            if (data is not null && ((data.UseAlternateSpriteWhenSeedReady && tree.hasSeed.Value)
+                || (data.UseAlternateSpriteWhenNotShaken && !tree.wasShakenToday.Value)))
+                canopy.X = 48;
+            if (moss)
+                canopy.X = 96;
+
+            billboards.Add(new Billboard(baseCenter, canopy, texture, CanopyLayer));
+        }
+
+        Rectangle trunk = Tree.stumpSourceRect;
+        if (moss)
+            trunk.X += 96;
+
+        billboards.Add(new Billboard(baseCenter, trunk, texture, TrunkLayer));
+    }
+
+    private static string? TreeTextureName(Tree tree) {
+        _ = tree.texture.Value;
+        return tree.TextureName;
     }
 
     private static void BuildFruitTree(FruitTree fruitTree, Vector2 tile, TerrainMesh terrain, SpriteResolver sprites, List<Billboard> billboards) {
-        int growthStage = fruitTree.growthStage.Value;
-        if (growthStage >= FruitTreeYoungStage)
+        if (fruitTree.growthStage.Value < FruitTreeYoungStage) {
+            BuildYoungFruitTree(fruitTree, tile, terrain, sprites, billboards);
             return;
+        }
 
-        string textureName = fruitTree.textureName ?? FruitTreeFallbackTexture;
-        Texture2D? texture = sprites.Resolve(textureName);
+        BuildMatureFruitTree(fruitTree, tile, terrain, sprites, billboards);
+    }
+
+    private static void BuildYoungFruitTree(FruitTree fruitTree, Vector2 tile, TerrainMesh terrain, SpriteResolver sprites, List<Billboard> billboards) {
+        int growthStage = fruitTree.growthStage.Value;
+
+        Texture2D? texture = sprites.Resolve(fruitTree.textureName ?? FruitTreeFallbackTexture);
         if (texture is null)
             return;
 
@@ -190,6 +233,70 @@ internal static class TerrainFeatureBillboards {
             (tile.Y * 64f + 48f + wobble) / PixelsPerTile);
 
         billboards.Add(new Billboard(baseCenter, source, texture));
+    }
+
+    private static void BuildMatureFruitTree(FruitTree fruitTree, Vector2 tile, TerrainMesh terrain, SpriteResolver sprites, List<Billboard> billboards) {
+        if (fruitTree.health.Value <= -99f)
+            return;
+
+        Texture2D? texture = sprites.Resolve(fruitTree.textureName ?? FruitTreeFallbackTexture);
+        if (texture is null)
+            return;
+
+        int row = fruitTree.GetSpriteRowNumber();
+        int rowTop = row * 5 * 16;
+        int season = (int)fruitTree.GetCosmeticSeason();
+        Vector3 baseCenter = TileBaseCenter(tile, terrain);
+
+        if (!fruitTree.stump.Value) {
+            var canopy = new Rectangle((12 + season * 3) * 16, rowTop, 48, 80);
+            billboards.Add(new Billboard(baseCenter, canopy, texture, CanopyLayer));
+        }
+
+        var trunk = new Rectangle(384, rowTop + 48, 48, 32);
+        billboards.Add(new Billboard(baseCenter, trunk, texture, TrunkLayer));
+
+        AddFruitBillboards(fruitTree, tile, terrain, sprites, billboards);
+    }
+
+    private static void AddFruitBillboards(FruitTree fruitTree, Vector2 tile, TerrainMesh terrain, SpriteResolver sprites, List<Billboard> billboards) {
+        bool struck = fruitTree.struckByLightningCountdown.Value > 0;
+        int count = Math.Min(fruitTree.fruit.Count, 3);
+
+        for (int i = 0; i < count; i++) {
+            Item? fruit = fruitTree.fruit[i];
+            if (fruit is null)
+                continue;
+
+            ParsedItemData data = ItemRegistry.GetDataOrErrorItem(struck ? "(O)382" : fruit.QualifiedItemId);
+            Rectangle source = data.GetSourceRect();
+            Texture2D? texture = sprites.Resolve(data.TextureName);
+            if (texture is null || source.Width <= 0 || source.Height <= 0)
+                continue;
+
+            Vector2 position = FruitPosition(tile, i);
+            var baseCenter = new Vector3(
+                (position.X + source.Width / 2f * SpriteScale) / PixelsPerTile,
+                terrain.HeightAt((int)tile.X, (int)tile.Y),
+                (position.Y + source.Height * SpriteScale) / PixelsPerTile);
+
+            billboards.Add(new Billboard(baseCenter, source, texture, FruitLayer));
+        }
+    }
+
+    private static Vector2 FruitPosition(Vector2 tile, int index) {
+        return index switch {
+            0 => new Vector2(tile.X * 64f - 64f + tile.X * 200f % 64f / 2f, tile.Y * 64f - 192f - tile.X % 64f / 3f),
+            1 => new Vector2(tile.X * 64f + 32f, tile.Y * 64f - 256f + tile.X * 232f % 64f / 3f),
+            _ => new Vector2(tile.X * 64f + tile.X * 200f % 64f / 3f, tile.Y * 64f - 160f + tile.X * 200f % 64f / 3f),
+        };
+    }
+
+    private static Vector3 TileBaseCenter(Vector2 tile, TerrainMesh terrain) {
+        return new Vector3(
+            (tile.X * 64f + 32f) / PixelsPerTile,
+            terrain.HeightAt((int)tile.X, (int)tile.Y),
+            (tile.Y * 64f + 64f) / PixelsPerTile);
     }
 
     private static void BuildBush(Bush bush, TerrainMesh terrain, SpriteResolver sprites, List<Billboard> billboards) {
